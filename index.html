@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rapido — Book a Ride</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --orange:#FF6B00; --orange-light:#FF8C38; --orange-glow:rgba(255,107,0,0.15);
+  --green:#00C853; --green-dark:#00A044; --blue:#3B82F6;
+  --dark:#0D1117; --dark2:#161B22; --dark3:#1C2330; --card:#1E2535;
+  --border:rgba(255,255,255,0.08); --text:#E8EAF0; --muted:#6B7280; --white:#fff;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Nunito',sans-serif;background:var(--dark);color:var(--text);min-height:100vh;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--orange);border-radius:4px;}
+
+.screen{display:none;flex-direction:column;min-height:100vh;}
+.screen.active{display:flex;}
+
+/* TOAST */
+.toast{
+  position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-10px);
+  background:var(--dark3);border:1px solid var(--border);color:var(--text);
+  padding:11px 22px;border-radius:50px;font-size:13px;font-weight:700;
+  z-index:9999;opacity:0;transition:all 0.35s cubic-bezier(.34,1.56,.64,1);
+  pointer-events:none;white-space:nowrap;box-shadow:0 8px 32px rgba(0,0,0,0.4);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* LOGIN */
+.login-bg{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:24px;position:relative;overflow:hidden;
+}
+.login-bg::before{
+  content:'';position:absolute;width:500px;height:500px;
+  background:radial-gradient(circle,rgba(255,107,0,0.1) 0%,transparent 70%);
+  top:-100px;right:-100px;pointer-events:none;
+}
+.login-card{
+  width:100%;max-width:390px;background:var(--dark2);
+  border:1px solid var(--border);border-radius:24px;overflow:hidden;position:relative;z-index:1;
+}
+.login-top{
+  padding:36px 28px 28px;text-align:center;
+  background:linear-gradient(135deg,#111827 0%,#1C2330 100%);
+  border-bottom:1px solid var(--border);position:relative;overflow:hidden;
+}
+.login-top::before{
+  content:'';position:absolute;width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,107,0,0.15) 0%,transparent 70%);
+  top:-60px;right:-60px;
+}
+.brand-row{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:6px;}
+.brand-icon{
+  width:54px;height:54px;border-radius:16px;background:var(--orange);
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  box-shadow:0 8px 24px rgba(255,107,0,0.35);
+}
+.brand-name{font-size:32px;font-weight:900;color:#fff;letter-spacing:-1.5px;font-family:'Space Grotesk',sans-serif;}
+.brand-sub{font-size:13px;color:var(--muted);font-weight:600;margin-top:6px;}
+
+.login-form{padding:28px;display:flex;flex-direction:column;gap:14px;}
+.field-wrap{display:flex;flex-direction:column;gap:6px;}
+.field-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;}
+.field-inp{
+  width:100%;padding:13px 16px;background:var(--dark3);
+  border:1.5px solid var(--border);border-radius:12px;
+  font-size:15px;font-family:'Nunito',sans-serif;font-weight:600;
+  color:var(--text);outline:none;transition:all 0.2s;
+}
+.field-inp:focus{border-color:var(--orange);background:rgba(255,107,0,0.04);}
+.field-inp::placeholder{color:#3D4550;}
+.btn{
+  padding:15px;border-radius:14px;border:none;font-size:15px;font-weight:800;
+  font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;width:100%;
+}
+.btn-orange{background:var(--orange);color:#fff;box-shadow:0 6px 20px rgba(255,107,0,0.3);}
+.btn-orange:hover{background:var(--orange-light);transform:translateY(-1px);}
+.btn-green{background:var(--green);color:#fff;box-shadow:0 6px 20px rgba(0,200,83,0.25);}
+.btn-green:hover{background:var(--green-dark);}
+.btn-ghost{background:rgba(255,255,255,0.05);border:1.5px solid var(--border);color:var(--muted);}
+.btn-red{background:#FF3B30;color:#fff;}
+
+/* APP LAYOUT */
+.app-header{
+  background:var(--dark2);padding:14px 18px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;
+}
+.ah-name{font-size:16px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;}
+.ah-sub{font-size:11px;color:var(--muted);font-weight:600;}
+.logout-btn{
+  padding:7px 14px;background:rgba(255,255,255,0.06);border:1px solid var(--border);
+  border-radius:20px;color:var(--muted);font-size:12px;font-weight:700;
+  font-family:'Nunito',sans-serif;cursor:pointer;transition:all 0.2s;
+}
+.logout-btn:hover{border-color:var(--orange);color:var(--orange);}
+
+.app-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;}
+
+/* SEARCH BOX */
+.search-card{
+  background:var(--card);border:1px solid var(--border);border-radius:18px;
+  padding:16px;display:flex;flex-direction:column;gap:10px;
+}
+.search-title{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;}
+.search-row{position:relative;}
+.search-icon{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  width:10px;height:10px;border-radius:50%;flex-shrink:0;
+}
+.si-pick{background:var(--orange);box-shadow:0 0 0 3px rgba(255,107,0,0.2);}
+.si-drop{background:#E2E8F0;box-shadow:0 0 0 3px rgba(226,232,240,0.15);}
+.search-inp{
+  width:100%;padding:12px 14px 12px 34px;
+  background:var(--dark3);border:1.5px solid var(--border);border-radius:12px;
+  font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;
+  color:var(--text);outline:none;transition:all 0.2s;
+}
+.search-inp:focus{border-color:var(--orange);}
+.search-inp::placeholder{color:#3D4550;}
+.suggest-list{
+  position:absolute;width:100%;background:var(--dark2);border:1px solid var(--border);
+  border-radius:0 0 12px 12px;max-height:180px;overflow-y:auto;
+  z-index:200;display:none;top:100%;left:0;
+}
+.suggest-item{
+  padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);
+  font-size:13px;font-weight:600;color:var(--text);transition:background 0.15s;
+}
+.suggest-item:last-child{border-bottom:none;}
+.suggest-item:hover{background:rgba(255,107,0,0.08);}
+
+/* FARE CARD */
+.fare-card{
+  background:linear-gradient(135deg,rgba(255,107,0,0.1) 0%,rgba(255,107,0,0.04) 100%);
+  border:1.5px solid rgba(255,107,0,0.2);border-radius:18px;padding:16px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.fare-dist{font-size:13px;font-weight:700;color:var(--muted);}
+.fare-amount{font-size:28px;font-weight:900;color:var(--orange);font-family:'Space Grotesk',sans-serif;}
+.fare-label{font-size:11px;font-weight:700;color:var(--muted);}
+
+/* MAP */
+#map{height:220px;border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+
+/* STATUS CARD */
+.status-card{
+  border-radius:16px;padding:18px 16px;border:1px solid;
+  display:flex;align-items:center;gap:14px;
+}
+.status-card.searching{background:rgba(255,107,0,0.08);border-color:rgba(255,107,0,0.25);}
+.status-card.accepted{background:rgba(0,200,83,0.08);border-color:rgba(0,200,83,0.25);}
+.status-card.started{background:rgba(59,130,246,0.08);border-color:rgba(59,130,246,0.2);}
+.sc-icon{font-size:28px;flex-shrink:0;}
+.sc-title{font-size:15px;font-weight:800;color:#fff;}
+.sc-sub{font-size:12px;font-weight:600;color:var(--muted);margin-top:2px;}
+
+/* OTP DISPLAY */
+.otp-display-card{
+  background:rgba(0,200,83,0.08);border:1.5px solid rgba(0,200,83,0.3);
+  border-radius:16px;padding:16px;text-align:center;
+}
+.otp-label{font-size:11px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+.otp-digits{display:flex;gap:8px;justify-content:center;margin-bottom:10px;}
+.otp-d{
+  width:52px;height:56px;background:var(--dark2);border:2px solid rgba(0,200,83,0.3);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:26px;font-weight:900;color:var(--green);font-family:'Space Grotesk',sans-serif;
+}
+.otp-tip{font-size:12px;color:var(--muted);font-weight:600;}
+
+/* RIDER INFO CARD */
+.rider-info{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:14px 16px;display:flex;align-items:center;gap:12px;
+}
+.ri-av{
+  width:46px;height:46px;border-radius:50%;background:rgba(255,107,0,0.15);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:800;color:var(--orange);flex-shrink:0;
+}
+.ri-name{font-size:15px;font-weight:800;color:#fff;}
+.ri-vehicle{font-size:12px;color:var(--muted);font-weight:600;}
+.ri-call{
+  margin-left:auto;width:40px;height:40px;border-radius:50%;
+  background:rgba(0,200,83,0.15);border:1px solid rgba(0,200,83,0.3);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:18px;transition:all 0.2s;flex-shrink:0;
+}
+.ri-call:hover{background:rgba(0,200,83,0.25);transform:scale(1.05);}
+
+/* RATING MODAL */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;
+  display:none;align-items:flex-end;justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.modal-bg.show{display:flex;}
+.rating-modal{
+  background:var(--dark2);border-radius:24px 24px 0 0;
+  border:1px solid var(--border);padding:28px 24px 36px;
+  width:100%;max-width:430px;
+  animation:slideUp 0.35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-title{font-size:20px;font-weight:900;color:#fff;text-align:center;margin-bottom:4px;font-family:'Space Grotesk',sans-serif;}
+.modal-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:20px;}
+.stars-row{display:flex;justify-content:center;gap:10px;margin-bottom:20px;}
+.star{font-size:36px;cursor:pointer;transition:transform 0.15s;filter:grayscale(1);opacity:0.4;}
+.star.active{filter:none;opacity:1;transform:scale(1.1);}
+.comment-inp{
+  width:100%;padding:12px 14px;background:var(--dark3);border:1.5px solid var(--border);
+  border-radius:12px;font-size:14px;font-family:'Nunito',sans-serif;font-weight:600;
+  color:var(--text);outline:none;resize:none;margin-bottom:14px;
+}
+.comment-inp:focus{border-color:var(--orange);}
+.comment-inp::placeholder{color:#3D4550;}
+
+/* HISTORY TAB */
+.history-empty{text-align:center;padding:48px 24px;color:var(--muted);}
+.history-empty .he-icon{font-size:48px;margin-bottom:12px;opacity:0.4;}
+.h-card{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  overflow:hidden;margin-bottom:10px;
+}
+.hc-top{padding:12px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border);}
+.hc-status{font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;}
+.hc-s-completed{background:rgba(0,200,83,0.15);color:var(--green);}
+.hc-s-cancelled{background:rgba(255,59,48,0.1);color:#FF6B6B;}
+.hc-s-requested{background:rgba(255,107,0,0.1);color:var(--orange);}
+.hc-amt{font-size:16px;font-weight:900;color:#fff;font-family:'Space Grotesk',sans-serif;}
+.hc-body{padding:12px 14px;}
+.hc-route{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);font-weight:600;}
+.hc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+
+/* BOTTOM NAV */
+.bottom-nav{
+  display:flex;background:var(--dark2);
+  border-top:1px solid var(--border);padding:10px 0 8px;
+  position:sticky;bottom:0;z-index:100;
+}
+.nav-it{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;transition:all 0.2s;}
+.nav-ico{font-size:20px;}
+.nav-lb{font-size:10px;font-weight:700;color:var(--muted);}
+.nav-it.active .nav-lb{color:var(--orange);}
+.nav-it.active .nav-ico{filter:drop-shadow(0 0 5px rgba(255,107,0,0.7));}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- RATING MODAL -->
+<div class="modal-bg" id="ratingModal">
+  <div class="rating-modal">
+    <div class="modal-title">Rate your ride ⭐</div>
+    <div class="modal-sub">How was your experience?</div>
+    <div class="stars-row" id="starsRow">
+      <span class="star" onclick="setStar(1)">⭐</span>
+      <span class="star" onclick="setStar(2)">⭐</span>
+      <span class="star" onclick="setStar(3)">⭐</span>
+      <span class="star" onclick="setStar(4)">⭐</span>
+      <span class="star" onclick="setStar(5)">⭐</span>
+    </div>
+    <textarea class="comment-inp" id="ratingComment" placeholder="Any comments? (optional)" rows="3"></textarea>
+    <button class="btn btn-orange" onclick="submitRating()">Submit Rating</button>
+  </div>
+</div>
+
+<!-- ========== LOGIN SCREEN ========== -->
+<div class="screen active" id="loginScreen">
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="login-top">
+        <div class="brand-row">
+          <div class="brand-icon">🚕</div>
+          <div class="brand-name">Rapido</div>
+        </div>
+        <div class="brand-sub">உங்கள் பயணம், உங்கள் விலை</div>
+      </div>
+      <div class="login-form">
+        <div class="field-wrap">
+          <label class="field-label">Your Name</label>
+          <input class="field-inp" id="userName" placeholder="Enter your name" type="text">
+        </div>
+        <div class="field-wrap">
+          <label class="field-label">Mobile Number</label>
+          <input class="field-inp" id="userMobile" placeholder="10-digit mobile" type="tel" maxlength="10">
+        </div>
+        <button class="btn btn-orange" onclick="userLogin()">🚀 Book a Ride</button>
+        <p style="text-align:center;font-size:11px;color:var(--muted);font-weight:600;">
+          By continuing you agree to Rapido's Terms of Service
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MAIN APP SCREEN ========== -->
+<div class="screen" id="appScreen">
+  <div class="app-header">
+    <div>
+      <div class="ah-name" id="ah-name">Hello!</div>
+      <div class="ah-sub">Where are you going?</div>
+    </div>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+
+  <!-- HOME TAB -->
+  <div id="homeTab" class="app-body">
+    <!-- Search -->
+    <div class="search-card">
+      <div class="search-title">Book a ride</div>
+      <div class="search-row">
+        <div class="search-icon si-pick"></div>
+        <input class="search-inp" id="pickupInp" placeholder="Pickup location..." oninput="getSuggestions(this,'pickup')" autocomplete="off">
+        <div class="suggest-list" id="pickupSuggest"></div>
+      </div>
+      <div class="search-row">
+        <div class="search-icon si-drop" style="top:50%;"></div>
+        <input class="search-inp" id="dropInp" placeholder="Drop location..." oninput="getSuggestions(this,'drop')" autocomplete="off">
+        <div class="suggest-list" id="dropSuggest"></div>
+      </div>
+      <button class="btn btn-orange" onclick="calcFare()" id="calcBtn">Check Fare & Distance</button>
+    </div>
+
+    <!-- Fare display (hidden until calc) -->
+    <div id="fareCard" style="display:none;">
+      <div class="fare-card">
+        <div>
+          <div class="fare-label">Estimated Fare</div>
+          <div class="fare-amount" id="fareAmt">₹0</div>
+          <div class="fare-dist" id="fareDist">0 km</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:28px;">🛵</div>
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-top:4px;">Auto</div>
+        </div>
+      </div>
+      <button class="btn btn-green" onclick="bookRide()" style="margin-top:10px;">Confirm Booking</button>
+    </div>
+
+    <!-- Status card (hidden until booked) -->
+    <div id="statusSection" style="display:none;display:flex;flex-direction:column;gap:10px;">
+      <div class="status-card searching" id="statusCard">
+        <div class="sc-icon">🔍</div>
+        <div>
+          <div class="sc-title" id="statusTitle">Searching for Captain...</div>
+          <div class="sc-sub" id="statusSub">Please wait, we are finding the nearest captain</div>
+        </div>
+      </div>
+
+      <!-- OTP display (hidden until accepted) -->
+      <div class="otp-display-card" id="otpSection" style="display:none;">
+        <div class="otp-label">🔐 Share this OTP with Captain</div>
+        <div class="otp-digits" id="otpDigits"></div>
+        <div class="otp-tip">Captain will enter this OTP to start the ride</div>
+      </div>
+
+      <!-- Rider info (hidden until accepted) -->
+      <div class="rider-info" id="riderInfoCard" style="display:none;">
+        <div class="ri-av" id="riAv">?</div>
+        <div>
+          <div class="ri-name" id="riName">Captain</div>
+          <div class="ri-vehicle" id="riVehicle">Vehicle</div>
+        </div>
+        <button class="ri-call" id="riCall">📞</button>
+      </div>
+
+      <button class="btn btn-ghost" id="cancelBtn" onclick="cancelRide()" style="margin-top:4px;">Cancel Ride</button>
+    </div>
+
+    <div id="map"></div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div id="historyTab" class="app-body" style="display:none;">
+    <div id="historyList">
+      <div class="history-empty">
+        <div class="he-icon">📋</div>
+        <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;">No rides yet</div>
+        <div style="font-size:13px;">Your ride history will appear here</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-it active" id="navHome" onclick="switchTab('home')">
+      <div class="nav-ico">🏠</div><div class="nav-lb">Home</div>
+    </div>
+    <div class="nav-it" id="navHistory" onclick="switchTab('history')">
+      <div class="nav-ico">📋</div><div class="nav-lb">History</div>
+    </div>
+    <div class="nav-it" id="navProfile" onclick="switchTab('profile')">
+      <div class="nav-ico">👤</div><div class="nav-lb">Profile</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var socket = io.connect("http://localhost:5000");
+var userId=null, userName='', userMobile='';
+var pLatLng=null, dLatLng=null;
+var map=null, routeLine=null, markers={};
+var distKm=0, currentRideId=null;
+var selectedStar=5, pendingRideId=null;
+
+const ORS_KEY="eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRkZTIyZjhlMTg2NjQ1MjY4MzIwNzIzYzMzMDQwMWU0IiwiaCI6Im11cm11cjY0In0=";
+
+function showToast(msg,dur){
+  dur=dur||3000;
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),dur);
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='appScreen') setTimeout(initMap,300);
+}
+
+function initMap(){
+  if(map) return;
+  map=L.map('map').setView([13.0827,80.2707],12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(map);
+}
+
+function userLogin(){
+  var name=document.getElementById('userName').value.trim();
+  var mobile=document.getElementById('userMobile').value.trim();
+  if(!name||!mobile){showToast('⚠️ Name and mobile enter pannunga!');return;}
+  if(mobile.length<10){showToast('⚠️ Valid mobile number enter pannunga!');return;}
+  fetch('/login',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,mobile})
+  }).then(r=>r.json()).then(data=>{
+    userId=data.user_id; userName=name; userMobile=mobile;
+    socket.emit('join',{user_id:userId});
+    document.getElementById('ah-name').textContent='Hi, '+name.split(' ')[0]+'! 👋';
+    showScreen('appScreen');
+    showToast('✅ Welcome, '+name+'!');
+  }).catch(()=>showToast('❌ Server connect aakavillai. Backend run pannunga.'));
+}
+
+function logout(){
+  userId=null; userName=''; userMobile='';
+  pLatLng=null; dLatLng=null; distKm=0; currentRideId=null;
+  document.getElementById('pickupInp').value='';
+  document.getElementById('dropInp').value='';
+  document.getElementById('fareCard').style.display='none';
+  document.getElementById('statusSection').style.display='none';
+  showScreen('loginScreen');
+}
+
+function switchTab(tab){
+  document.getElementById('homeTab').style.display=tab==='home'?'flex':'none';
+  document.getElementById('historyTab').style.display=tab==='history'?'flex':'none';
+  document.querySelectorAll('.nav-it').forEach(n=>n.classList.remove('active'));
+  if(tab==='home') document.getElementById('navHome').classList.add('active');
+  if(tab==='history'){
+    document.getElementById('navHistory').classList.add('active');
+    loadHistory();
+  }
+  if(tab==='profile') document.getElementById('navProfile').classList.add('active');
+}
+
+function getSuggestions(inp,type){
+  var q=inp.value;
+  var list=document.getElementById(type+'Suggest');
+  if(q.length<3){list.style.display='none';return;}
+  fetch(`https://api.openrouteservice.org/geocode/autocomplete?api_key=${ORS_KEY}&text=${encodeURIComponent(q)}&boundary.country=IN&size=5`)
+  .then(r=>r.json()).then(data=>{
+    list.innerHTML='';
+    if(!data.features||!data.features.length){list.style.display='none';return;}
+    list.style.display='block';
+    data.features.forEach(f=>{
+      var d=document.createElement('div');
+      d.className='suggest-item';
+      d.textContent=f.properties.label;
+      d.onclick=function(){
+        inp.value=f.properties.label;
+        // ORS coordinates = [lng, lat] — we store as [lat, lng]
+        var lng=f.geometry.coordinates[0];
+        var lat=f.geometry.coordinates[1];
+        if(type==='pickup'){
+          pLatLng=[lat,lng];
+          updateMarker('pickup',lat,lng);
+          console.log('Pickup set:',lat,lng);
+        } else {
+          dLatLng=[lat,lng];
+          updateMarker('drop',lat,lng);
+          console.log('Drop set:',lat,lng);
+        }
+        list.style.display='none';
+      };
+      list.appendChild(d);
+    });
+  }).catch(()=>{list.style.display='none';});
+  // Close suggestions on outside click
+  document.addEventListener('click',function close(e){
+    if(!inp.contains(e.target)&&!list.contains(e.target)){
+      list.style.display='none';
+      document.removeEventListener('click',close);
+    }
+  });
+}
+
+function updateMarker(type,lat,lng){
+  if(!map) return;
+  if(markers[type]) map.removeLayer(markers[type]);
+  var color=type==='pickup'?'#FF6B00':'#E2E8F0';
+  var icon=L.divIcon({html:`<div style="background:${color};width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,iconSize:[14,14]});
+  markers[type]=L.marker([lat,lng],{icon}).addTo(map);
+  map.setView([lat,lng],14);
+}
+
+function calcFare(){
+  if(!pLatLng||!dLatLng){showToast('⚠️ Pickup and drop select pannunga!');return;}
+  var btn=document.getElementById('calcBtn');
+  btn.textContent='Calculating...';btn.disabled=true;
+  var url=`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_KEY}&start=${pLatLng[1]},${pLatLng[0]}&end=${dLatLng[1]},${dLatLng[0]}`;
+  fetch(url).then(r=>r.json()).then(data=>{
+    distKm=data.features[0].properties.summary.distance/1000;
+    var amt=Math.round(distKm*15);
+    document.getElementById('fareAmt').textContent='₹'+amt;
+    document.getElementById('fareDist').textContent=distKm.toFixed(2)+' km';
+    document.getElementById('fareCard').style.display='block';
+    if(routeLine) map.removeLayer(routeLine);
+    var coords=data.features[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    routeLine=L.polyline(coords,{color:'#FF6B00',weight:5,opacity:0.9}).addTo(map);
+    map.fitBounds(routeLine.getBounds(),{padding:[30,30]});
+    btn.textContent='Check Fare & Distance';btn.disabled=false;
+  }).catch(()=>{showToast('❌ Route calculate aakavillai');btn.textContent='Check Fare & Distance';btn.disabled=false;});
+}
+
+function bookRide(){
+  if(!userId){showToast('⚠️ Please login first');return;}
+  // Strong validation before sending
+  if(!pLatLng||pLatLng.length<2){showToast('⚠️ Pickup location select pannunga!');return;}
+  if(!dLatLng||dLatLng.length<2){showToast('⚠️ Drop location select pannunga!');return;}
+  if(!distKm||distKm<=0){showToast('⚠️ First "Check Fare" click pannunga!');return;}
+
+  var payload={
+    user_id:userId,
+    lat:pLatLng[0],
+    lng:pLatLng[1],
+    drop_lat:dLatLng[0],
+    drop_lng:dLatLng[1],
+    pickup:document.getElementById('pickupInp').value,
+    drop:document.getElementById('dropInp').value,
+    distance:distKm
+  };
+  console.log('Booking payload:', payload); // debug
+
+  fetch('/book',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  })
+  .then(r=>{
+    if(!r.ok) return r.json().then(e=>{throw new Error(e.error||'Server error '+r.status);});
+    return r.json();
+  })
+  .then(data=>{
+    currentRideId=data.ride_id;
+    document.getElementById('fareCard').style.display='none';
+    document.getElementById('statusSection').style.display='flex';
+    showToast('🎉 Booking confirmed! Searching for captain...');
+  })
+  .catch(err=>{
+    console.error('Book error:',err);
+    showToast('❌ '+(err.message||'Booking failed. Try again.'));
+  });
+}
+
+function cancelRide(){
+  if(!currentRideId||!userId) return;
+  fetch('/cancel',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ride_id:currentRideId,user_id:userId})
+  }).then(r=>r.json()).then(()=>{
+    currentRideId=null;
+    document.getElementById('statusSection').style.display='none';
+    document.getElementById('fareCard').style.display='none';
+    document.getElementById('otpSection').style.display='none';
+    document.getElementById('riderInfoCard').style.display='none';
+    showToast('❌ Ride cancelled');
+  });
+}
+
+function loadHistory(){
+  if(!userId) return;
+  fetch('/user_history/'+userId).then(r=>r.json()).then(rides=>{
+    var list=document.getElementById('historyList');
+    if(!rides.length){
+      list.innerHTML='<div class="history-empty"><div class="he-icon">📋</div><div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;">No rides yet</div><div style="font-size:13px;">Your ride history will appear here</div></div>';
+      return;
+    }
+    list.innerHTML=rides.map(r=>{
+      var sc=r.status==='COMPLETED'?'hc-s-completed':r.status==='CANCELLED'?'hc-s-cancelled':'hc-s-requested';
+      var emoji=r.status==='COMPLETED'?'✅':r.status==='CANCELLED'?'❌':'⏳';
+      return `<div class="h-card">
+        <div class="hc-top">
+          <div class="hc-status ${sc}">${emoji} ${r.status}</div>
+          <div class="hc-amt">₹${Math.round(r.amount)}</div>
+        </div>
+        <div class="hc-body">
+          <div class="hc-route"><div class="hc-dot" style="background:#FF6B00"></div>${r.pickup}</div>
+          <div style="width:2px;height:14px;background:var(--border);margin:3px 0 3px 3px;"></div>
+          <div class="hc-route"><div class="hc-dot" style="background:#E2E8F0"></div>${r.drop_location}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;font-weight:600;">${r.distance} km ${r.rider_name?'• Captain: '+r.rider_name:''} ${r.rating?'• '+r.rating+'★':''}</div>
+        </div>
+      </div>`;
+    }).join('');
+  });
+}
+
+// RATING
+function setStar(n){
+  selectedStar=n;
+  document.querySelectorAll('.star').forEach((s,i)=>{
+    s.classList.toggle('active',i<n);
+  });
+}
+setStar(5);
+
+function submitRating(){
+  if(!pendingRideId) return;
+  var comment=document.getElementById('ratingComment').value;
+  fetch('/complete_ride',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ride_id:pendingRideId,rating:selectedStar,comment})
+  }).then(()=>{
+    document.getElementById('ratingModal').classList.remove('show');
+    showToast('⭐ Thanks for rating!');
+    currentRideId=null; pendingRideId=null;
+    document.getElementById('statusSection').style.display='none';
+    document.getElementById('otpSection').style.display='none';
+    document.getElementById('riderInfoCard').style.display='none';
+  });
+}
+
+// SOCKET EVENTS
+socket.on('ride_accepted',function(data){
+  // Show OTP
+  var digits=data.otp.split('');
+  document.getElementById('otpDigits').innerHTML=digits.map(d=>`<div class="otp-d">${d}</div>`).join('');
+  document.getElementById('otpSection').style.display='block';
+  // Update status
+  var sc=document.getElementById('statusCard');
+  sc.className='status-card accepted';
+  document.getElementById('statusTitle').textContent='Captain Found! 🎉';
+  document.getElementById('statusSub').textContent='Share the OTP with your captain to start the ride';
+  // Show rider info
+  document.getElementById('riAv').textContent=data.rider_name?data.rider_name.substring(0,2).toUpperCase():'?';
+  document.getElementById('riName').textContent=data.rider_name||'Captain';
+  document.getElementById('riVehicle').textContent=data.vehicle_no||'';
+  document.getElementById('riCall').onclick=()=>window.open('tel:'+data.rider_mobile);
+  document.getElementById('riderInfoCard').style.display='flex';
+  document.getElementById('cancelBtn').style.display='none';
+  showToast('✅ Captain found! Share OTP: '+data.otp);
+});
+
+socket.on('ride_started',function(data){
+  var sc=document.getElementById('statusCard');
+  sc.className='status-card started';
+  document.getElementById('statusTitle').textContent='Ride In Progress 🛵';
+  document.getElementById('statusSub').textContent='You are on your way! Sit back and relax.';
+  document.getElementById('otpSection').style.display='none';
+  showToast('🛵 Ride started! Enjoy your trip');
+});
+
+socket.on('ride_completed',function(data){
+  pendingRideId=data.ride_id;
+  document.getElementById('ratingModal').classList.add('show');
+  showToast('🎉 Ride completed! Please rate your captain');
+});
+
+socket.on('ride_taken',function(data){
+  // Another captain took this ride from elsewhere
+});
+</script>
+</body>
+</html>
